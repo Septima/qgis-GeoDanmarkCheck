@@ -83,7 +83,7 @@ class SegmentMatchFinder(object):
         distances_per_vertex = []
         for coord in segcoords:
             rect = QgsGeometry.fromPoint(coord).boundingBox()
-            rect.buffer(maxdistance)
+            rect = rect.buffer(maxdistance)
             nearbyfeatures = self.indexedfeatures.geometryintersects(rect)
             distances = {}
             for neighbor in nearbyfeatures:
