@@ -8,9 +8,9 @@
 
 [general]
 name=GeoDanmark Checker
-qgisMinimumVersion=2.0
+qgisMinimumVersion=2.14
 description=This plugin provides methods to check GeoDanmark data
-version=1.3.2
+version=1.4.0
 author=Septima
 email=asger@septima.dk
 
@@ -24,6 +24,9 @@ repository=https://github.com/Septima/qgis-GeoDanmarkCheck
 
 # Uncomment the following line and add your changelog:
 changelog=
+    2017-01-31 1.4.0
+     * Stream centrelines false positives (#45)
+     * Fix no use of rectangle buffer causing missed nearby features (4d86761d31670780f1a9484789a81f1ab7cc91c3)
     2017-01-20 1.3.2
      * Fix false positive geom matches (#43)
     2016-12-18 1.3.1
