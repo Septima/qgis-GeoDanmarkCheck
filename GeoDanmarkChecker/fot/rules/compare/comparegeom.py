@@ -23,7 +23,7 @@ from ... import Repository
 from ... import FeatureType
 from ...geomutils.featurematcher import MatchFinder, ExactGeometryMatcher
 from ...geomutils.segmentmatcher import SegmentMatchFinder
-from qgis.core import QgsGeometry
+from qgis.core import QgsGeometry, QgsFeature
 
 
 class MatchingGeometrySameDirection(CompareRule):
@@ -104,10 +104,20 @@ class MatchingGeometrySameDirection(CompareRule):
         # Compare nonexact geometry matches
         progressreporter.begintask(self.name, len(changed_after_features))
         segmentmatchfinder = SegmentMatchFinder(changed_before_features, segmentize=self.segmentize)
+        segmentmatchfinder2 = SegmentMatchFinder(afterfeats, segmentize=self.segmentize)
         for f in changed_after_features:
             for sm in segmentmatchfinder.findmatching(f, maxdistance=self.maxdist):
                 f2 = sm.nearestfeature
-                self._check(errorreporter, f2, f, sm.togeometry(), sm.sameDirection(), True)
+                # check so that the projection of sm at least once matches the same nearest feature when segment matched against afterfeats
+                projgeom = sm.toprojgeometry()
+                projmatches = False
+                for sm2 in segmentmatchfinder2.findmatching(projgeom, maxdistance=self.maxdist, ignore=f):
+                    projmatches = True
+                    if f2 == sm2.nearestfeature:
+                        self._check(errorreporter, f2, f, sm.togeometry(), sm.samedirection(), True)
+                        break
+                if not projmatches:
+                    self._check(errorreporter, f2, f, sm.togeometry(), sm.samedirection(), True)
             progressreporter.completed_one()
 
     # check for exact geometry matches - should have same dir

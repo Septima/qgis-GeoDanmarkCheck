@@ -25,11 +25,13 @@ from . import togeometry, tocoordinates
 from .algorithms import densify, line_locate_point
 from math import sqrt, cos, pi
 
+# A SegmentMatch can be either a single segment match or multiple segment matches against the same feature
 class SegmentMatch(object):
     def __init__(self, f, nearest_feature):
         self.thisfeature = f
         self.nearestfeature = nearest_feature
         self.vertices = []
+        self.projvertices = []
         self.match_prev_distances = []
         self.match_this_distances = []
         self.maxdistancefound = -1
@@ -37,13 +39,19 @@ class SegmentMatch(object):
     def togeometry(self):
         return QgsGeometry.fromPolyline(self.vertices)
 
+    def toprojgeometry(self):
+        return QgsGeometry.fromPolyline(self.projvertices)
+
+    def addprojvertex(self, point):
+        self.projvertices.append(point)
+
     def addvertex(self, point, distance, match_prev_distance, match_this_distance):
         self.vertices.append(point)
         self.match_prev_distances.append(match_prev_distance)
         self.match_this_distances.append(match_this_distance)
         self.maxdistancefound = max(distance, self.maxdistancefound)
 
-    def sameDirection(self):
+    def samedirection(self):
         same_direction = True
         for i in xrange(0, len(self.vertices)):
             prev_distance = self.match_prev_distances[i]
@@ -55,9 +63,9 @@ class SegmentMatch(object):
             if prev_index > this_index:
                 same_direction = False
             elif prev_index == this_index:
-                 vertex = self.nearestfeature.geometry().vertexAt(prev_index)
-                 if prev_point.sqrDist(vertex) < this_point.sqrDist(vertex):
-                     same_direction = False
+                vertex = self.nearestfeature.geometry().vertexAt(prev_index)
+                if prev_point.sqrDist(vertex) < this_point.sqrDist(vertex):
+                    same_direction = False
         return same_direction
 
 
@@ -70,7 +78,7 @@ class SegmentMatchFinder(object):
         self.approximate_angle_threshold = cos(pi/4.0) # Not a match if: other_segment_length < this_segment_length * self.approximate_angle_threshold
         self.length_threshold_factor = 1.3 # Not a match if: other_segment_length > this_segment_length * self.length_threshold_factor
 
-    def findmatching(self, feature, maxdistance):
+    def findmatching(self, feature, maxdistance, ignore=None):
         maxdistance = float(maxdistance)
         maxdistsqrd = maxdistance * maxdistance
         geom = togeometry(feature)
@@ -79,7 +87,7 @@ class SegmentMatchFinder(object):
         seggeom = densify(geom, self.segmentize) if self.segmentize else geom
         segcoords = tocoordinates(seggeom)
 
-        # For each vertws in this geom calculate distance to all neighbors
+        # For each vertex in this geom calculate distance to all neighbours
         distances_per_vertex = []
         for coord in segcoords:
             rect = QgsGeometry.fromPoint(coord).boundingBox()
@@ -87,8 +95,8 @@ class SegmentMatchFinder(object):
             nearbyfeatures = self.indexedfeatures.geometryintersects(rect)
             distances = {}
             for neighbor in nearbyfeatures:
-                # Dont match self
-                if neighbor != feature:
+                # Dont match self or ignored
+                if neighbor != feature and neighbor != ignore:
                     sqrddist, closestsegmentpoint, indexofclosestvertexafter = neighbor.geometry().closestSegmentWithContext(coord)
                     if sqrddist <= maxdistsqrd:
                         distances[neighbor] = (sqrddist, closestsegmentpoint, indexofclosestvertexafter)
@@ -109,9 +117,10 @@ class SegmentMatchFinder(object):
             this_distances = distances_per_vertex[i]
             smallest_distance_sqrd = float('inf')
             smallest_distance_feature = None
+            # For each neighbor feature, loop all distances
             for f, this_distance in this_distances.iteritems():
+                # Feature f wasnt nearby at the previous vertex => f is not candidate for this segment
                 if not f in prev_distances:
-                    # Feature f wasnt nearby at the previous vertex => f is not candidate for this segment
                     continue
                 prev_distance = prev_distances[f]
                 sumsqrddistance = this_distance[0] + prev_distance[0]
@@ -133,6 +142,7 @@ class SegmentMatchFinder(object):
                         break
             # Do we have a running segmentmatch to extend?
             if current_segmentmatch and current_segmentmatch.nearestfeature == smallest_distance_feature:
+                current_segmentmatch.addprojvertex(match_this_distance[1])
                 current_segmentmatch.addvertex(this_vertex, sqrt(smallest_distance_sqrd), match_prev_distance, match_this_distance)
             else:
                 # The closes feature is not the same as in the last segment
@@ -141,7 +151,9 @@ class SegmentMatchFinder(object):
                     current_segmentmatch = None
                 if smallest_distance_feature:
                     current_segmentmatch = SegmentMatch(feature, smallest_distance_feature)
+                    current_segmentmatch.addprojvertex(match_prev_distance[1])
                     current_segmentmatch.addvertex(prev_vertex, sqrt(smallest_distance_sqrd), match_prev_distance, match_this_distance)
+                    current_segmentmatch.addprojvertex(match_this_distance[1])
                     current_segmentmatch.addvertex(this_vertex, sqrt(smallest_distance_sqrd), match_prev_distance, match_this_distance)
         # Add last segmentmatch
         if current_segmentmatch:
